@@ -2,6 +2,9 @@
   "name": "@swcstudiospace/aimee",
   "version": "0.1.0",
   "exports": "./mod.ts",
+  "bin": {
+    "aimee": "./mod.ts"
+  },
   "tasks": {
     "aimee": "deno run -A mod.ts",
     "test": "deno test --allow-all"

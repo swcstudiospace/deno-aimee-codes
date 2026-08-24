@@ -2,6 +2,7 @@ import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   assetName,
   cachePath,
+  type FetchLike,
   latestTag,
   releaseAssetUrl,
   splitPinnedTag,
@@ -65,4 +66,55 @@ Deno.test("cache path is versioned per tag", () => {
 Deno.test("latest tag rejects api failures", async () => {
   // Non-existent repo must surface a clean error instead of undefined.
   await assertRejects(() => latestTag("swcstudiospace/does-not-exist-404"));
+});
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+Deno.test("latest tag prefers the stable release endpoint", async () => {
+  const fetchFn = (() =>
+    Promise.resolve(
+      jsonResponse({ tag_name: "v0.2.0" }, 200),
+    )) as unknown as FetchLike;
+  const actual = await latestTag("swcstudiospace/aimeecodes", fetchFn);
+  const expected = "v0.2.0";
+  assertEquals(actual, expected);
+});
+
+Deno.test("latest tag falls back to newest pre-release when no stable exists", async () => {
+  const fetchFn = ((url: string) =>
+    Promise.resolve(
+      url.endsWith("/releases/latest")
+        ? jsonResponse("Not Found", 404)
+        : jsonResponse(
+          [
+            { tag_name: "v0.3.0-rc.1" },
+            { tag_name: "v0.2.0" },
+          ],
+          200,
+        ),
+    )) as unknown as FetchLike;
+  const actual = await latestTag("swcstudiospace/aimeecodes", fetchFn);
+  const expected = "v0.3.0-rc.1";
+  assertEquals(actual, expected);
+});
+
+Deno.test("latest tag reports empty release list clearly", async () => {
+  const fetchFn = ((url: string) =>
+    Promise.resolve(
+      url.endsWith("/releases/latest")
+        ? jsonResponse("Not Found", 404)
+        : jsonResponse([], 200),
+    )) as unknown as FetchLike;
+  const actual = latestTag("swcstudiospace/aimeecodes", fetchFn);
+  const expectedMessage = "No releases published yet";
+  await assertRejects(
+    () => actual,
+    Error,
+    expectedMessage,
+  );
 });

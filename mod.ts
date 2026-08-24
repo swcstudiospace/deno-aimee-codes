@@ -5,6 +5,9 @@
  * it under `AIMEE_HOME` (default `~/.aimee`), then execs it with the given
  * arguments.
  *
+ * Install (puts `aimee` on your PATH):
+ *   deno install -Ag -n aimee jsr:@swcstudiospace/aimee
+ *
  * Usage:
  *   deno run -A jsr:@swcstudiospace/aimee            # latest release
  *   deno run -A jsr:@swcstudiospace/aimee v0.1.0 ... # pinned tag + args
@@ -62,20 +65,44 @@ export function cachePath(tag: string, home: string, os: string): string {
   return `${home}/bin/aimee-${tag}${exe}`;
 }
 
-/** Latest published release tag from the GitHub API. */
-export async function latestTag(repo: string = GITHUB_REPO): Promise<string> {
-  const res = await fetch(
+/** Minimal fetch signature so tests can stub GitHub responses. */
+export type FetchLike = (url: string) => Promise<Response>;
+
+/**
+ * Latest published release tag from the GitHub API.
+ *
+ * `/releases/latest` only matches stable releases, so when it 404s this
+ * falls back to the newest release of any kind (pre-releases included).
+ * Throws a clear error while a repo has nothing published at all.
+ */
+export async function latestTag(
+  repo: string = GITHUB_REPO,
+  fetchFn: FetchLike = fetch,
+): Promise<string> {
+  const res = await fetchFn(
     `https://api.github.com/repos/${repo}/releases/latest`,
   );
-  if (!res.ok) {
-    throw new Error(`Failed to resolve latest release (${res.status})`);
-  }
-  const body = await res.json();
-  const tag = body?.tag_name;
-  if (typeof tag !== "string" || tag.length === 0) {
+  if (res.ok) {
+    const body = await res.json();
+    const tag = body?.tag_name;
+    if (typeof tag === "string" && tag.length > 0) {
+      return tag;
+    }
     throw new Error("Release metadata did not contain a tag_name");
   }
-  return tag;
+
+  const listed = await fetchFn(`https://api.github.com/repos/${repo}/releases`);
+  if (listed.ok) {
+    const releases = await listed.json();
+    if (Array.isArray(releases) && releases.length > 0) {
+      const tag = releases[0]?.tag_name;
+      if (typeof tag === "string" && tag.length > 0) {
+        return tag;
+      }
+    }
+    throw new Error("No releases published yet");
+  }
+  throw new Error(`Failed to resolve latest release (${res.status})`);
 }
 
 /** Returns the cached binary path, downloading it on first use. */
