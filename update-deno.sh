@@ -30,6 +30,10 @@ if [[ "${AUTO_PUSH:-false}" == "true" ]]; then
   git push origin main
 fi
 
-if [[ -n "${JSR_TOKEN:-}" ]]; then
-  deno publish --token "${JSR_TOKEN}"
+if [[ -z "${JSR_TOKEN:-}" ]]; then
+  echo "error: JSR_TOKEN is not set; refusing to skip the JSR publish" >&2
+  echo "       add it under repo Settings > Secrets > Actions (token from jsr.io)" >&2
+  exit 1
 fi
+
+deno publish --token "${JSR_TOKEN}"
